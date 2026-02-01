@@ -1,0 +1,12 @@
+# Claude
+.claude/
+
+# Python venv
+bin/
+lib/
+lib64
+include/
+pyvenv.cfg
+share/
+__pycache__/
+*.pyc
