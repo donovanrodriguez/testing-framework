@@ -79,5 +79,5 @@ class NetworkTester:
         print(f"Total Tests: {total}")
         print(f"Passed: {passed}")
         print(f"Failed: {failed}")
-        print(f"Success Rate: {(passed/total*100) if total > 0 else 0:.1f}%")
+        print(f"Success Rate: {((passed/total)*100 if total > 0 else 0):.1f}%")
         print("="*50)

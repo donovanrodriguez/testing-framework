@@ -49,7 +49,7 @@ def run_example_tests(target_ip: str = "127.0.0.1", target_port: int = 80):
     print(f"Total Tests Run: {total}")
     print(f"Passed: {passed}")
     print(f"Failed: {failed}")
-    print(f"Success Rate: {(passed/total*100) if total > 0 else 0:.1f}%")
+    print(f"Success Rate: {((passed/total)*100 if total > 0 else 0):.1f}%")
     print("="*60)
     
     return all_results
