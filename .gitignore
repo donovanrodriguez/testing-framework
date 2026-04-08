@@ -10,3 +10,8 @@ pyvenv.cfg
 share/
 __pycache__/
 *.pyc
+# Paper files
+*.pdf
+*.docx
+# Test artifacts
+*.pcap
