@@ -17,7 +17,6 @@ from tests import ext_header_ordering
 from tests import ext_header_unknown
 from tests import ext_header_chain
 from tests import flow_label_entropy
-from tests import dhcpv6_exchange
 
 TEST_REGISTRY = {
     "icmpv6_echo": icmpv6_echo,
@@ -39,7 +38,6 @@ TEST_REGISTRY = {
     "ext_header_unknown": ext_header_unknown,
     "ext_header_chain": ext_header_chain,
     "flow_label_entropy": flow_label_entropy,
-    "dhcpv6_exchange": dhcpv6_exchange,
 }
 
 

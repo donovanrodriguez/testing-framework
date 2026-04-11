@@ -87,7 +87,6 @@ For IPv6 addresses, colons are replaced with hyphens. For example, targeting `20
 | ndp_dad | Send DAD-style Neighbor Solicitations (src=::) to test address defense |
 | ndp_redirect | Send NDP Redirect messages to observe acceptance and validation behavior |
 | ra_flags | Send Router Advertisements with various M/O flag combinations |
-| dhcpv6_exchange | Test DHCPv6 stateful and stateless client behavior |
 
 ### Core Protocol Mechanics
 
