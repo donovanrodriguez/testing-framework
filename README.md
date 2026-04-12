@@ -96,25 +96,3 @@ For IPv6 addresses, colons are replaced with hyphens. For example, targeting `20
 | ext_header_unknown | Send packets with unknown extension header types and HBH option action bits |
 | ext_header_chain | Send packets with long chains of extension headers to test parsing limits |
 | flow_label_entropy | Send multiple Echo Requests and analyze flow label patterns in replies |
-
-## Adding New Tests
-
-1. Create a new module in `tests/` (e.g. `tests/neighbor_discovery.py`)
-2. Define a `DESCRIPTION` string and a `run(target_ip)` function
-3. `run()` must return a list of `(sent_packet, received_packet_or_None)` tuples
-4. Register the module in `tests/__init__.py` by importing it and adding it to `TEST_REGISTRY`
-
-Example skeleton:
-
-```python
-from scapy.layers.inet6 import IPv6
-from scapy.sendrecv import sr1
-
-DESCRIPTION = "Short description of this test"
-
-
-def run(target_ip):
-    pkt = IPv6(dst=target_ip) / ...
-    reply = sr1(pkt, timeout=5, verbose=0)
-    return [(pkt, reply)]
-```
