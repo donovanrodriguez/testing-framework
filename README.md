@@ -1,17 +1,17 @@
 # IPv6 Testing Framework
 
-A CLI tool for testing OS-specific IPv6 implementations using Scapy for packet crafting and pcap generation.
+A simple CLI tool for testing OS-specific IPv6 implementations using Scapy for packet crafting and pcap generation. Written as part of a final project for school.
 
 ## Project Structure
 
 ```
 testing-framework/
-├── main.py              # CLI entry point
+├── main.py             
 ├── tests/
-│   ├── __init__.py      # Test registry and discovery
-│   └── *.py             # Individual test modules
-├── output/              # Per-system pcap output directories
-└── requirements.txt     # Python dependencies
+│   ├── __init__.py      
+│   └── *.py             
+├── output/              
+└── requirements.txt     
 ```
 
 ## Setup
