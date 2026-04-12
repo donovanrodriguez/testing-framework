@@ -1,10 +1,42 @@
-from scapy.layers.inet6 import IPv6, IPv6ExtHdrFragment, ICMPv6EchoRequest
+import time
+
+from scapy.layers.inet6 import (
+    IPv6,
+    IPv6ExtHdrFragment,
+    ICMPv6EchoRequest,
+    ICMPv6EchoReply,
+    ICMPv6ParamProblem,
+    ICMPv6TimeExceeded,
+)
 from scapy.packet import Raw
-from scapy.sendrecv import sr1, send
+from scapy.sendrecv import send, AsyncSniffer
+from scapy.config import conf
 
 DESCRIPTION = "Test fragment reassembly with out-of-order and missing fragments (slow: ~65s timeout)"
 
 REASSEMBLY_TIMEOUT = 65
+
+
+def _send_and_receive(pkt, target_ip, timeout=5):
+    iface = conf.route6.route(target_ip)[0]
+    sniffer = AsyncSniffer(
+        iface=iface,
+        filter=f"icmp6 and ip6 src host {target_ip}",
+        timeout=timeout,
+        count=5,
+    )
+    sniffer.start()
+    time.sleep(0.2)
+    send(pkt, verbose=0)
+    sniffer.join()
+    for p in (sniffer.results or []):
+        if not p.haslayer(IPv6):
+            continue
+        inner = p[IPv6]
+        if (inner.haslayer(ICMPv6EchoReply) or inner.haslayer(ICMPv6ParamProblem)
+                or inner.haslayer(ICMPv6TimeExceeded)):
+            return inner
+    return None
 
 
 def run(target_ip):
@@ -28,11 +60,10 @@ def run(target_ip):
 
     send(frag2, verbose=0)
     results.append((frag2, None))
-    reply1 = sr1(frag1, timeout=5, verbose=0)
+    reply1 = _send_and_receive(frag1, target_ip)
     results.append((frag1, reply1))
 
     # --- Test 2: Missing middle fragment (send frag1 + frag3, skip frag2) ---
-    # After reassembly timeout (~60s), some OSes send ICMPv6 Time Exceeded
     frag_id2 = 0xAA02
     full_pkt2 = IPv6(dst=target_ip) / ICMPv6EchoRequest(id=2, seq=2, data=b"M" * 48)
     icmp_data2 = bytes(full_pkt2)[40:]
@@ -50,7 +81,7 @@ def run(target_ip):
 
     send(f1, verbose=0)
     results.append((f1, None))
-    reply2 = sr1(f3, timeout=REASSEMBLY_TIMEOUT, verbose=0)
+    reply2 = _send_and_receive(f3, target_ip, timeout=REASSEMBLY_TIMEOUT)
     results.append((f3, reply2))
 
     # --- Test 3: Three fragments in reverse order (3, 2, 1) ---
@@ -78,7 +109,7 @@ def run(target_ip):
     results.append((r3, None))
     send(r2, verbose=0)
     results.append((r2, None))
-    reply3 = sr1(r1, timeout=5, verbose=0)
+    reply3 = _send_and_receive(r1, target_ip)
     results.append((r1, reply3))
 
     return results

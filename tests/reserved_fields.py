@@ -1,8 +1,38 @@
-from scapy.layers.inet6 import IPv6, ICMPv6EchoRequest, IPv6ExtHdrFragment
+import time
+
+from scapy.layers.inet6 import (
+    IPv6,
+    ICMPv6EchoRequest,
+    ICMPv6EchoReply,
+    ICMPv6ParamProblem,
+    IPv6ExtHdrFragment,
+)
 from scapy.packet import Raw
-from scapy.sendrecv import sr1
+from scapy.sendrecv import sr1, send, AsyncSniffer
+from scapy.config import conf
 
 DESCRIPTION = "Send packets with non-zero reserved bits and deprecated next-header values"
+
+
+def _send_and_receive(pkt, target_ip, timeout=5):
+    iface = conf.route6.route(target_ip)[0]
+    sniffer = AsyncSniffer(
+        iface=iface,
+        filter=f"icmp6 and ip6 src host {target_ip}",
+        timeout=timeout,
+        count=5,
+    )
+    sniffer.start()
+    time.sleep(0.2)
+    send(pkt, verbose=0)
+    sniffer.join()
+    for p in (sniffer.results or []):
+        if not p.haslayer(IPv6):
+            continue
+        inner = p[IPv6]
+        if inner.haslayer(ICMPv6EchoReply) or inner.haslayer(ICMPv6ParamProblem):
+            return inner
+    return None
 
 
 def run(target_ip):
@@ -27,7 +57,7 @@ def run(target_ip):
         / IPv6ExtHdrFragment(offset=0, m=0, id=0x5555, nh=58, res1=3, res2=1)
         / Raw(load=icmp_data)
     )
-    reply_frag = sr1(frag_pkt, timeout=5, verbose=0)
+    reply_frag = _send_and_receive(frag_pkt, target_ip)
     results.append((frag_pkt, reply_frag))
 
     # Deprecated next-header: nh=1 (IPv4 ICMP, not valid in IPv6)
@@ -36,11 +66,6 @@ def run(target_ip):
     )
     reply_nh1 = sr1(pkt_nh1, timeout=5, verbose=0)
     results.append((pkt_nh1, reply_nh1))
-
-    # Unassigned next-header: nh=253 (RFC 3692 experimentation)
-    pkt_nh253 = IPv6(dst=target_ip, nh=253) / Raw(load=b"\x00" * 16)
-    reply_nh253 = sr1(pkt_nh253, timeout=5, verbose=0)
-    results.append((pkt_nh253, reply_nh253))
 
     # nh=59 (No Next Header) with trailing data — must be ignored per RFC 8200
     pkt_nh59 = IPv6(dst=target_ip, nh=59) / Raw(load=b"SHOULD_BE_IGNORED")

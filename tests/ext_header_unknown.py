@@ -1,13 +1,52 @@
+import time
+import struct
+
 from scapy.layers.inet6 import (
     IPv6,
     ICMPv6EchoRequest,
+    ICMPv6EchoReply,
+    ICMPv6ParamProblem,
     IPv6ExtHdrHopByHop,
     HBHOptUnknown,
+    in6_chksum,
 )
 from scapy.packet import Raw
-from scapy.sendrecv import sr1
+from scapy.sendrecv import send, sr1, AsyncSniffer
+from scapy.config import conf
 
 DESCRIPTION = "Send packets with unknown extension header types and HBH option action bits"
+
+
+def _send_and_receive(pkt, target_ip, timeout=5):
+    """AsyncSniffer approach for HBH-wrapped packets where sr1 can't match
+    echo replies that lack extension headers."""
+    iface = conf.route6.route(target_ip)[0]
+    sniffer = AsyncSniffer(
+        iface=iface,
+        filter=f"icmp6 and ip6 src host {target_ip}",
+        timeout=timeout,
+        count=5,
+    )
+    sniffer.start()
+    time.sleep(0.2)
+    send(pkt, verbose=0)
+    sniffer.join()
+    for p in (sniffer.results or []):
+        if not p.haslayer(IPv6):
+            continue
+        inner = p[IPv6]
+        if inner.haslayer(ICMPv6EchoReply) or inner.haslayer(ICMPv6ParamProblem):
+            return inner
+    return None
+
+
+def _build_echo_with_checksum(target_ip, echo_id, echo_seq):
+    """Build raw ICMPv6 Echo Request bytes with a correct checksum."""
+    tmp = IPv6(dst=target_ip) / ICMPv6EchoRequest(id=echo_id, seq=echo_seq)
+    chksum = in6_chksum(58, tmp, bytes(tmp.payload))
+    body = bytearray(bytes(ICMPv6EchoRequest(id=echo_id, seq=echo_seq)))
+    struct.pack_into("!H", body, 2, chksum)
+    return bytes(body)
 
 
 def run(target_ip):
@@ -15,7 +54,7 @@ def run(target_ip):
 
     # Build a raw extension header block: nh=58 (ICMPv6), len=0 (8 bytes total)
     unknown_ext_hdr = bytes([58, 0, 0, 0, 0, 0, 0, 0])
-    echo_req = bytes(ICMPv6EchoRequest(id=1, seq=1))
+    echo_req = _build_echo_with_checksum(target_ip, 1, 1)
 
     # Unknown next-header type 253 (RFC 3692 experimentation)
     pkt1 = IPv6(dst=target_ip, nh=253) / Raw(load=unknown_ext_hdr + echo_req)
@@ -39,7 +78,7 @@ def run(target_ip):
         / IPv6ExtHdrHopByHop(options=[skip_opt])
         / ICMPv6EchoRequest(id=4, seq=4)
     )
-    reply4 = sr1(pkt4, timeout=5, verbose=0)
+    reply4 = _send_and_receive(pkt4, target_ip)
     results.append((pkt4, reply4))
 
     # HBH option action bits 01 (discard silently): otype=0x5F
@@ -49,7 +88,7 @@ def run(target_ip):
         / IPv6ExtHdrHopByHop(options=[discard_opt])
         / ICMPv6EchoRequest(id=5, seq=5)
     )
-    reply5 = sr1(pkt5, timeout=5, verbose=0)
+    reply5 = _send_and_receive(pkt5, target_ip)
     results.append((pkt5, reply5))
 
     # HBH option action bits 10 (discard + send ICMPv6 Parameter Problem): otype=0x9F
@@ -59,7 +98,7 @@ def run(target_ip):
         / IPv6ExtHdrHopByHop(options=[error_opt])
         / ICMPv6EchoRequest(id=6, seq=6)
     )
-    reply6 = sr1(pkt6, timeout=5, verbose=0)
+    reply6 = _send_and_receive(pkt6, target_ip)
     results.append((pkt6, reply6))
 
     # HBH option action bits 11 (discard + send ICMP if not multicast dst): otype=0xDF
@@ -69,7 +108,7 @@ def run(target_ip):
         / IPv6ExtHdrHopByHop(options=[error_nonmcast_opt])
         / ICMPv6EchoRequest(id=7, seq=7)
     )
-    reply7 = sr1(pkt7, timeout=5, verbose=0)
+    reply7 = _send_and_receive(pkt7, target_ip)
     results.append((pkt7, reply7))
 
     return results

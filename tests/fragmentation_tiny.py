@@ -1,25 +1,56 @@
-from scapy.layers.inet6 import IPv6, IPv6ExtHdrFragment, ICMPv6EchoRequest
+import time
+
+from scapy.layers.inet6 import (
+    IPv6,
+    IPv6ExtHdrFragment,
+    ICMPv6EchoRequest,
+    ICMPv6EchoReply,
+    ICMPv6ParamProblem,
+    ICMPv6TimeExceeded,
+)
 from scapy.packet import Raw
-from scapy.sendrecv import sr1, send
+from scapy.sendrecv import send, AsyncSniffer
+from scapy.config import conf
 
 DESCRIPTION = "Send tiny and atomic IPv6 fragments to test minimum size enforcement"
+
+
+def _send_and_receive(pkt, target_ip, timeout=5):
+    iface = conf.route6.route(target_ip)[0]
+    sniffer = AsyncSniffer(
+        iface=iface,
+        filter=f"icmp6 and ip6 src host {target_ip}",
+        timeout=timeout,
+        count=5,
+    )
+    sniffer.start()
+    time.sleep(0.2)
+    send(pkt, verbose=0)
+    sniffer.join()
+    for p in (sniffer.results or []):
+        if not p.haslayer(IPv6):
+            continue
+        inner = p[IPv6]
+        if (inner.haslayer(ICMPv6EchoReply) or inner.haslayer(ICMPv6ParamProblem)
+                or inner.haslayer(ICMPv6TimeExceeded)):
+            return inner
+    return None
 
 
 def run(target_ip):
     results = []
 
     full_pkt = IPv6(dst=target_ip) / ICMPv6EchoRequest(id=1, seq=1, data=b"X" * 48)
-    icmp_data = bytes(full_pkt)[40:]  # 56 bytes
+    icmp_data = bytes(full_pkt)[40:]
 
     # --- Test 1: Atomic fragment (fragment header present, offset=0, M=0) ---
-    # RFC 8200 deprecated atomic fragments but stacks must still handle them
     frag_id = 0x1111
     atomic = (
         IPv6(dst=target_ip)
         / IPv6ExtHdrFragment(offset=0, m=0, id=frag_id, nh=58)
         / Raw(load=icmp_data)
     )
-    reply1 = sr1(atomic, timeout=5, verbose=0)
+    reply1 = _send_and_receive(atomic, target_ip)
     results.append((atomic, reply1))
 
     # --- Test 2: Tiny first fragment (8 bytes — minimum allowed) ---
@@ -36,7 +67,7 @@ def run(target_ip):
     )
 
     send(tiny1, verbose=0)
-    reply2 = sr1(tiny2, timeout=5, verbose=0)
+    reply2 = _send_and_receive(tiny2, target_ip)
     results.append((tiny1, None))
     results.append((tiny2, reply2))
 
@@ -54,7 +85,7 @@ def run(target_ip):
     )
 
     send(micro1, verbose=0)
-    reply3 = sr1(micro2, timeout=5, verbose=0)
+    reply3 = _send_and_receive(micro2, target_ip)
     results.append((micro1, None))
     results.append((micro2, reply3))
 

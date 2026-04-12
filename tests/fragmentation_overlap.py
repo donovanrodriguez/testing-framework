@@ -1,27 +1,56 @@
-from scapy.layers.inet6 import IPv6, IPv6ExtHdrFragment, ICMPv6EchoRequest
+import time
+
+from scapy.layers.inet6 import (
+    IPv6,
+    IPv6ExtHdrFragment,
+    ICMPv6EchoRequest,
+    ICMPv6EchoReply,
+    ICMPv6ParamProblem,
+    ICMPv6TimeExceeded,
+)
 from scapy.packet import Raw
-from scapy.sendrecv import sr1, send
+from scapy.sendrecv import send, AsyncSniffer
+from scapy.config import conf
 
 DESCRIPTION = "Send overlapping IPv6 fragments and observe reassembly or rejection"
+
+
+def _send_and_receive(pkt, target_ip, timeout=5):
+    iface = conf.route6.route(target_ip)[0]
+    sniffer = AsyncSniffer(
+        iface=iface,
+        filter=f"icmp6 and ip6 src host {target_ip}",
+        timeout=timeout,
+        count=5,
+    )
+    sniffer.start()
+    time.sleep(0.2)
+    send(pkt, verbose=0)
+    sniffer.join()
+    for p in (sniffer.results or []):
+        if not p.haslayer(IPv6):
+            continue
+        inner = p[IPv6]
+        if (inner.haslayer(ICMPv6EchoReply) or inner.haslayer(ICMPv6ParamProblem)
+                or inner.haslayer(ICMPv6TimeExceeded)):
+            return inner
+    return None
 
 
 def run(target_ip):
     results = []
 
-    # Build a valid ICMPv6 echo with correct checksum, then extract the bytes
     full_pkt = IPv6(dst=target_ip) / ICMPv6EchoRequest(id=1, seq=1, data=b"A" * 24)
-    icmp_data = bytes(full_pkt)[40:]  # 32 bytes of ICMPv6
+    icmp_data = bytes(full_pkt)[40:]
 
     # --- Test 1: Overlapping fragments ---
     frag_id = 0xAAAA
 
-    # Fragment 1: offset=0, M=1, first 16 bytes
     frag1 = (
         IPv6(dst=target_ip)
         / IPv6ExtHdrFragment(offset=0, m=1, id=frag_id, nh=58)
         / Raw(load=icmp_data[:16])
     )
-    # Fragment 2: offset=1 (8 bytes), M=0, bytes 8-31 — overlaps with frag1 bytes 8-15
     frag2 = (
         IPv6(dst=target_ip)
         / IPv6ExtHdrFragment(offset=1, m=0, id=frag_id, nh=58)
@@ -29,7 +58,7 @@ def run(target_ip):
     )
 
     send(frag1, verbose=0)
-    reply1 = sr1(frag2, timeout=5, verbose=0)
+    reply1 = _send_and_receive(frag2, target_ip)
     results.append((frag1, None))
     results.append((frag2, reply1))
 
@@ -54,7 +83,7 @@ def run(target_ip):
 
     send(frag1b, verbose=0)
     send(frag1b_dup, verbose=0)
-    reply2 = sr1(frag2b, timeout=5, verbose=0)
+    reply2 = _send_and_receive(frag2b, target_ip)
     results.append((frag1b, None))
     results.append((frag1b_dup, None))
     results.append((frag2b, reply2))
