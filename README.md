@@ -95,4 +95,4 @@ For IPv6 addresses, colons are replaced with hyphens. For example, targeting `20
 | ext_header_ordering | Send packets with extension headers in correct and incorrect RFC 8200 order |
 | ext_header_unknown | Send packets with unknown extension header types and HBH option action bits |
 | ext_header_chain | Send packets with long chains of extension headers to test parsing limits |
-| flow_label_entropy | Send multiple Echo Requests and analyze flow label patterns in replies |
+| flow_label | Send multiple Echo Requests and analyze flow label patterns in replies |
